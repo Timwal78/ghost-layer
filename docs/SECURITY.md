@@ -25,13 +25,16 @@
 
 ## What GHOST does NOT (yet) guarantee — be honest with users
 
-- **The token is not yet upstream-enforced.** In the MVP the ephemeral token is
-  a marker; making upstream APIs *reject* anything without a valid, unexpired
-  ghost token requires a broker/gateway in front of those APIs (roadmap). Today
-  GHOST gives you ephemerality + scope + signed proof, not upstream rejection.
-- **Proxy bypass.** If an agent calls an API *without* going through
-  `GhostProxy`, that call is unscoped and unlogged. Route all agent egress
-  through the proxy (or, in production, through a network egress gateway).
+- **Upstream enforcement requires the gateway.** The enforcement gap present in
+  v0.1.0 is closed in v0.1.1 via `GhostGateway`. When you run `ghost serve`
+  (sidecar or broker mode), the gateway validates `X-Ghost-Token` on every
+  request and immediately rejects it after `evaporate` — even for third-party
+  APIs in broker mode. **Without the gateway running**, token revocation is
+  local only (scope + TTL enforcement in `act`). If you need true upstream
+  rejection, run the gateway.
+- **Proxy bypass.** If an agent calls an API *without* going through the
+  gateway or `GhostProxy`, that call is unscoped and unlogged. Route all agent
+  egress through `ghost serve` in production.
 - **Local trust.** The ephemeral seed lives on the agent host during the
   session. A root-level compromise of that host during the session window can
   read it. TTLs should be as short as the task allows.

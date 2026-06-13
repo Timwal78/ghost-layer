@@ -7,6 +7,7 @@ the session and are shredded at evaporate.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import secrets
 import shutil
@@ -88,6 +89,12 @@ def spawn(
     )
     store.log_credential(session_id, _fingerprint(public_raw), "spawn", _iso(spawned))
 
+    # Mint an opaque bearer token for gateway enforcement.
+    # Only the SHA-256 hash is stored; the raw token is returned once and never persisted.
+    raw_token = "ghtok_" + secrets.token_hex(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    store.store_token_hash(session_id, token_hash)
+
     return {
         "session_id": session_id,
         "intent": intent,
@@ -96,6 +103,7 @@ def spawn(
         "spawned_at": _iso(spawned),
         "expires_at": _iso(expires),
         "ttl_seconds": ttl,
+        "token": raw_token,   # present once — store securely, gateway uses it
     }
 
 

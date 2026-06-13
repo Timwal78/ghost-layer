@@ -4,10 +4,14 @@ Append-only audit log of sessions and the actions executed within them. Each
 action carries a hash of its params/response and an Ed25519 signature. At
 evaporate time a root signature is computed over the ordered action chain,
 making any later tampering detectable.
+
+v0.1.1 additive migration: token_hash column on sessions (backward-compatible).
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import os
 import sqlite3
 from pathlib import Path
@@ -66,7 +70,16 @@ class ResidueStore:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._conn.executescript(_SCHEMA)
+        self._migrate_v011()  # additive, safe on existing DBs
         self._conn.commit()
+
+    def _migrate_v011(self) -> None:
+        """Add token_hash column if upgrading from v0.1.0 DB (idempotent)."""
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(sessions)")}
+        if "token_hash" not in cols:
+            self._conn.execute(
+                "ALTER TABLE sessions ADD COLUMN token_hash TEXT"
+            )
 
     # ---- sessions ---------------------------------------------------------
     def insert_session(self, row: dict[str, Any]) -> None:
@@ -96,6 +109,30 @@ class ResidueStore:
             (evaporated_at, lived_seconds, root_signature, session_id),
         )
         self._conn.commit()
+
+    def store_token_hash(self, session_id: str, token_hash: str) -> None:
+        """Persist the HMAC-SHA256 hash of the opaque bearer token."""
+        self._conn.execute(
+            "UPDATE sessions SET token_hash = ? WHERE session_id = ?",
+            (token_hash, session_id),
+        )
+        self._conn.commit()
+
+    def validate_token(self, raw_token: str) -> Optional[sqlite3.Row]:
+        """Return the live session row if raw_token is valid, else None.
+
+        A token is valid iff:
+        - Its HMAC-SHA256 hash matches a stored token_hash.
+        - The session has not evaporated (evaporated_at IS NULL).
+        - The session has not TTL-expired (checked in session.py on act()).
+        """
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        cur = self._conn.execute(
+            """SELECT * FROM sessions
+               WHERE token_hash = ? AND evaporated_at IS NULL""",
+            (token_hash,),
+        )
+        return cur.fetchone()
 
     def list_sessions(self, limit: int = 50) -> list[sqlite3.Row]:
         cur = self._conn.execute(

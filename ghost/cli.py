@@ -13,6 +13,7 @@ import click
 
 from . import __version__
 from . import session as _session
+from .gateway import GhostGateway
 from .session import (
     ExpiredSessionError,
     ScopeError,
@@ -59,6 +60,12 @@ def spawn(ctx: click.Context, intent: str, ttl: int, scope: tuple) -> None:
     )
     click.secho(
         f"  TTL {ttl}s  |  scopes: {', '.join(scope) if scope else '(none)'}", fg=CYAN
+    )
+    click.secho(
+        f"\n  ⚠  bearer token issued once — store securely:\n"
+        f"     {result['token']}",
+        fg=GOLD,
+        bold=True,
     )
 
 
@@ -196,6 +203,65 @@ def replay(ctx: click.Context, session_id: Optional[str], all_: bool, fmt: str) 
     else:
         click.secho("\n  RESIDUE VERIFICATION FAILED", fg=RED, bold=True)
         sys.exit(4)
+
+
+@cli.command()
+@click.option("--upstream", required=True, help="Upstream base URL, e.g. https://api.stripe.com")
+@click.option("--upstream-key", default=None, help="Real API key injected by gateway (broker mode). Never reaches the agent.")
+@click.option("--port", default=7391, show_default=True, help="Gateway listen port.")
+@click.option("--host", default="127.0.0.1", show_default=True, help="Bind address.")
+@click.option("--verbose", is_flag=True, help="Log every proxied request.")
+@click.pass_context
+def serve(
+    ctx: click.Context,
+    upstream: str,
+    upstream_key: Optional[str],
+    port: int,
+    host: str,
+    verbose: bool,
+) -> None:
+    """Start the enforcement gateway (reverse proxy / egress broker).
+
+    Agents send requests to this gateway carrying X-Ghost-Token.
+    The gateway validates the token, then forwards to --upstream.
+
+    Sidecar mode (your own service):
+        ghost serve --upstream http://localhost:8080
+
+    Broker mode (third-party API — real key never reaches the agent):
+        ghost serve --upstream https://api.stripe.com --upstream-key sk_live_...
+
+    When 'ghost evaporate' is called, the gateway immediately rejects
+    any request with that token — even if the caller cached it.
+    """
+    store: ResidueStore = ctx.obj["store"]
+    mode = "broker" if upstream_key else "sidecar"
+    click.secho(
+        f"\n  GHOST Gateway — {mode} mode", fg=CYAN, bold=True
+    )
+    click.secho(f"  upstream : {upstream}", fg=CYAN)
+    click.secho(f"  listen   : http://{host}:{port}", fg=CYAN)
+    if upstream_key:
+        click.secho(
+            f"  upstream key injected (real credential hidden from agent)", fg=GOLD
+        )
+    click.secho("\n  Token enforcement is LIVE. Evaporate kills access instantly.\n", fg=GREEN)
+
+    gw = GhostGateway(
+        store=store,
+        upstream_url=upstream,
+        upstream_key=upstream_key,
+        port=port,
+        host=host,
+        log_requests=verbose,
+    )
+    gw.start()
+    try:
+        click.secho("  Ctrl-C to stop.\n", fg=GOLD)
+        gw._thread.join()  # type: ignore[union-attr]
+    except KeyboardInterrupt:
+        gw.stop()
+        click.secho("\n  Gateway stopped.", fg=PINK)
 
 
 def main() -> None:

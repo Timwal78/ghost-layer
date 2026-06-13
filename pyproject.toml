@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ghost-layer"
-version = "0.1.0"
+version = "0.1.1"
 description = "Ephemeral execution layer for autonomous AI agents — scoped credentials, cryptographic residue."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "Timothy Walton", email = "ScriptMasterLabs@gmail.com" }]
-keywords = ["ai-agents", "autonomous", "ephemeral", "credentials", "cryptography", "audit", "x402"]
+keywords = ["ai-agents", "autonomous", "ephemeral", "credentials", "cryptography", "audit", "x402", "gateway"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
