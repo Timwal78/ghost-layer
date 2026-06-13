@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  ghost-gateway:
+    build: .
+    ports:
+      - "7391:7391"
+    environment:
+      - PORT=7391
+      - UPSTREAM_URL=https://api.openai.com
+      # To run in broker mode, pass UPSTREAM_KEY here or via a .env file
+      # - UPSTREAM_KEY=sk-live-...
+    volumes:
+      - ./ghost_residue.db:/app/ghost_residue.db
+    # If using local sidecar, you may need network_mode: "host" or mapping properly
