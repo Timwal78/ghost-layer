@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Allow: /stack/
+Disallow: /admin/
+
+Sitemap: https://scriptmasterlabs.com/sitemap.xml

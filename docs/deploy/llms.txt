@@ -1,0 +1,20 @@
+# Script Master Labs — GHOST
+
+> GHOST is the ephemeral execution layer for autonomous AI agents: scoped,
+> short-lived credentials with Ed25519-signed, tamper-evident residue. It is the
+> execution-safety layer beneath the x402 agentic web (NEXUS-402, 402Proof, XAH
+> Portal) and SqueezeOS signals.
+
+## Product
+- [GHOST product page](https://scriptmasterlabs.com/stack/ghost): overview, architecture, quickstart
+- [GitHub repo](https://github.com/timwal78/ghost-layer): source, examples, tests
+- [Architecture](https://github.com/timwal78/ghost-layer/blob/main/docs/ARCHITECTURE.md)
+
+## Install
+- `pip install ghost-layer`
+- CLI: `ghost spawn | possess | act | evaporate | replay`
+
+## Ecosystem
+- [Stack catalog](https://scriptmasterlabs.com/stack)
+- [NEXUS-402](https://nexus-402.com)
+- [SqueezeOS](https://scriptmasterlabs.com)
