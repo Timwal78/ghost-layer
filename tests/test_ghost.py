@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import platform
 import time
 
 import pytest
@@ -48,7 +49,10 @@ def test_spawn_creates_session_and_key(store, _isolate_sessions):
     assert res["scopes"] == ["aws_ec2"]
     key = _isolate_sessions / res["session_id"] / "ed25519_seed"
     assert key.exists()
-    assert oct(key.stat().st_mode)[-3:] == "600"
+    # Windows NTFS does not enforce Unix file modes; chmod 600 is a no-op there.
+    # The restriction is enforced on Linux (CI). Skip locally on Windows.
+    if platform.system() != "Windows":
+        assert oct(key.stat().st_mode)[-3:] == "600"
 
 
 # ---- act + scope ----------------------------------------------------------
