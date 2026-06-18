@@ -1,0 +1,17 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "Ghost Layer",
+  "name_for_model": "ghost_layer",
+  "description_for_human": "Dual-chain XRPL/Base toll gateway for autonomous AI agents. x402 native, zero custody.",
+  "description_for_model": "Provides cross-chain payment routing, URIToken licensing, and agent identity verification via x402 on XRPL and Base networks.",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "mcp",
+    "url": "https://ghost-layer.onrender.com/mcp"
+  },
+  "logo_url": "https://ghost-layer.onrender.com/og-image.png",
+  "contact_email": "ScriptMasterLabs@gmail.com",
+  "legal_info_url": "https://ghost-layer.onrender.com"
+}
