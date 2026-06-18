@@ -1,0 +1,15 @@
+# Ghost Layer
+> Dual-chain XRPL/Base toll gateway for autonomous AI agents.
+
+## Connect
+- MCP Endpoint: https://ghost-layer.onrender.com/mcp
+- Transport: streamable-http
+- Payment: RLUSD on XRPL or USDC on Base via x402
+
+## Features
+- URIToken on-chain licensing (Xahau)
+- 54-block execution matrix
+- Agent Passport loyalty tiers (Bronze → Diamond)
+- Zero custody architecture
+
+## Built by ScriptMasterLabs (SDVOSB) - ScriptMasterLabs@gmail.com
