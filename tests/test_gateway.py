@@ -24,7 +24,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import pytest
 
 from ghost import session as gsession
-from ghost.gateway import GatewayTokenError, GhostGateway, validate_gateway_token
+from ghost.gateway import GatewayTokenError, GhostGateway, validate_gateway_token, validate_upstream_url
 from ghost.session import ExpiredSessionError
 from ghost.store import ResidueStore
 
@@ -155,7 +155,7 @@ def _get(port: int, path: str = "/", token: str = "", extra_headers: dict = None
 def test_gateway_proxies_valid_token(store):
     upstream = _fake_upstream(17391)
     res = gsession.spawn(store, intent="test", ttl=60)
-    gw = GhostGateway(store, upstream_url="http://127.0.0.1:17391", port=17392)
+    gw = GhostGateway(store, upstream_url="http://127.0.0.1:17391", port=17392, validate_ssrf=False)
     gw.start()
     try:
         status, body = _get(17392, "/hello", token=res["token"])
@@ -170,7 +170,7 @@ def test_gateway_proxies_valid_token(store):
 def test_gateway_rejects_no_token(store):
     upstream = _fake_upstream(17393)
     gsession.spawn(store, intent="test", ttl=60)
-    gw = GhostGateway(store, upstream_url="http://127.0.0.1:17393", port=17394)
+    gw = GhostGateway(store, upstream_url="http://127.0.0.1:17393", port=17394, validate_ssrf=False)
     gw.start()
     try:
         status, body = _get(17394)
@@ -185,7 +185,7 @@ def test_gateway_rejects_after_evaporate(store):
     """Core v0.1.1 claim: gateway returns 401 after evaporate, even with cached token."""
     upstream = _fake_upstream(17395)
     res = gsession.spawn(store, intent="test", ttl=60)
-    gw = GhostGateway(store, upstream_url="http://127.0.0.1:17395", port=17396)
+    gw = GhostGateway(store, upstream_url="http://127.0.0.1:17395", port=17396, validate_ssrf=False)
     gw.start()
     try:
         # Token works before evaporate
@@ -231,6 +231,7 @@ def test_gateway_broker_mode_injects_upstream_key(store):
         upstream_url="http://127.0.0.1:17397",
         upstream_key="sk_live_real_secret",
         port=17398,
+        validate_ssrf=False,
     )
     gw.start()
     try:
@@ -244,3 +245,37 @@ def test_gateway_broker_mode_injects_upstream_key(store):
     finally:
         gw.stop()
         upstream.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# SSRF protection tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("url", [
+    "http://127.0.0.1/internal",
+    "http://localhost/internal",
+    "http://169.254.169.254/latest/meta-data/",  # AWS metadata endpoint
+    "http://10.0.0.1/secret",
+    "http://192.168.1.1/admin",
+    "http://172.16.0.1/admin",
+])
+def test_validate_upstream_url_blocks_private(url: str) -> None:
+    """SSRF: private/loopback/metadata addresses must be rejected."""
+    with pytest.raises(ValueError, match="SSRF|private|internal|loopback|localhost"):
+        validate_upstream_url(url)
+
+
+def test_validate_upstream_url_rejects_non_http_scheme() -> None:
+    with pytest.raises(ValueError, match="scheme"):
+        validate_upstream_url("ftp://example.com/file")
+
+
+def test_validate_upstream_url_rejects_empty() -> None:
+    with pytest.raises(ValueError):
+        validate_upstream_url("")
+
+
+def test_ghost_gateway_rejects_ssrf_upstream(store) -> None:
+    """GhostGateway constructor raises ValueError for a private upstream URL."""
+    with pytest.raises(ValueError):
+        GhostGateway(store, upstream_url="http://169.254.169.254/latest/", validate_ssrf=True)

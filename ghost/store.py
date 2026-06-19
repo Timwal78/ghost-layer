@@ -20,6 +20,8 @@ from typing import Any, Optional
 GHOST_HOME = Path(os.environ.get("GHOST_HOME", Path.home() / ".ghost"))
 DEFAULT_DB = GHOST_HOME / "residue.db"
 
+__all__ = ["ResidueStore", "GHOST_HOME", "DEFAULT_DB"]
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
     session_id      TEXT PRIMARY KEY,

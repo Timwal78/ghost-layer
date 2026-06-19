@@ -26,20 +26,88 @@ The agent's HTTP client must:
 from __future__ import annotations
 
 import http.server
+import ipaddress
 import json
+import logging
+import socket
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Optional
 
 from .session import ExpiredSessionError, _parse_iso
 from .store import ResidueStore
 
+log = logging.getLogger("ghost.gateway")
+
 _GHOST_TOKEN_HEADER = "X-Ghost-Token"
 _GHOST_SESSION_HEADER = "X-Ghost-Session"
 _BLOCKED_REQUEST_HEADERS = {"authorization", "x-ghost-token", "x-ghost-session"}
+
+# Private / link-local / loopback / reserved networks that must never be
+# reachable from the proxy (SSRF protection).
+_PRIVATE_NETWORKS = [
+    ipaddress.ip_network("127.0.0.0/8"),      # loopback
+    ipaddress.ip_network("10.0.0.0/8"),        # RFC-1918
+    ipaddress.ip_network("172.16.0.0/12"),     # RFC-1918
+    ipaddress.ip_network("192.168.0.0/16"),    # RFC-1918
+    ipaddress.ip_network("169.254.0.0/16"),    # link-local / AWS metadata
+    ipaddress.ip_network("::1/128"),           # IPv6 loopback
+    ipaddress.ip_network("fc00::/7"),          # IPv6 ULA
+    ipaddress.ip_network("fe80::/10"),         # IPv6 link-local
+    ipaddress.ip_network("0.0.0.0/8"),         # "this" network
+]
+
+# HTTP response headers applied to every response this server sends.
+_SECURITY_HEADERS: dict[str, str] = {
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "X-XSS-Protection": "1; mode=block",
+    "Referrer-Policy": "no-referrer",
+    "Cache-Control": "no-store",
+}
+
+
+def _is_private_address(host: str) -> bool:
+    """Return True if *host* resolves to a private/reserved IP (SSRF guard)."""
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        # Unresolvable host — treat as safe to let the downstream error naturally.
+        return False
+    for *_, sockaddr in infos:
+        ip_str = sockaddr[0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+        if any(ip in net for net in _PRIVATE_NETWORKS):
+            return True
+    return False
+
+
+def validate_upstream_url(url: str) -> str:
+    """Validate that *url* is a safe upstream target.
+
+    Raises ValueError with a human-readable message if the URL is rejected.
+    Returns the normalised URL on success.
+    """
+    if not url:
+        raise ValueError("upstream URL must not be empty")
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"upstream URL scheme must be http or https, got {parsed.scheme!r}")
+    host = parsed.hostname
+    if not host:
+        raise ValueError("upstream URL must include a hostname")
+    if _is_private_address(host):
+        raise ValueError(
+            f"upstream URL {url!r} resolves to a private/internal address — "
+            "SSRF protection blocks this target"
+        )
+    return url
 
 
 class GatewayTokenError(Exception):
@@ -90,11 +158,17 @@ class _GhostRequestHandler(http.server.BaseHTTPRequestHandler):
         if self.server.log_requests:  # type: ignore[attr-defined]
             super().log_message(fmt, *args)
 
+    def _add_security_headers(self) -> None:
+        """Emit HTTP security headers on every response from this gateway."""
+        for k, v in _SECURITY_HEADERS.items():
+            self.send_header(k, v)
+
     def _send_json(self, status: int, body: dict[str, Any]) -> None:
         payload = json.dumps(body).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
+        self._add_security_headers()
         self.end_headers()
         self.wfile.write(payload)
 
@@ -103,12 +177,14 @@ class _GhostRequestHandler(http.server.BaseHTTPRequestHandler):
             from .vapl.middleware import build_vapl_manifest
             payload = json.dumps(build_vapl_manifest(), indent=2).encode()
         except Exception as exc:  # noqa: BLE001
-            payload = json.dumps({"error": str(exc)}).encode()
+            log.debug("[VAPL] manifest error: %s", exc)
+            payload = json.dumps({"error": "manifest unavailable"}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Cache-Control", "public, max-age=3600")
         self.send_header("Content-Length", str(len(payload)))
+        self._add_security_headers()
         self.end_headers()
         self.wfile.write(payload)
 
@@ -169,15 +245,19 @@ class _GhostRequestHandler(http.server.BaseHTTPRequestHandler):
                         from .vapl.middleware import emit_vapl_headers
                         for k, v in emit_vapl_headers(session_info, self.path, resp.status).items():
                             self.send_header(k, v)
+                    self._add_security_headers()
                     self.end_headers()
                     self.wfile.write(resp_body)
             except urllib.error.HTTPError as exc:
                 resp_body = exc.read()
                 self.send_response(exc.code)
+                self._add_security_headers()
                 self.end_headers()
                 self.wfile.write(resp_body)
             except Exception as exc:  # noqa: BLE001
-                self._send_json(502, {"error": "upstream_error", "detail": str(exc)})
+                # Log internally but do not leak upstream topology to callers.
+                log.warning("upstream request failed: %s", exc)
+                self._send_json(502, {"error": "upstream_error", "detail": "upstream request failed"})
         finally:
             store.close()
 
@@ -219,7 +299,12 @@ class GhostGateway:
         host: str = "127.0.0.1",
         log_requests: bool = False,
         vapl_enabled: bool = True,
+        validate_ssrf: bool = True,
     ) -> None:
+        # Validate upstream URL at construction time to catch SSRF targets early.
+        # Tests that use localhost upstreams can pass validate_ssrf=False.
+        if validate_ssrf:
+            validate_upstream_url(upstream_url)
         self.store = store
         self.upstream_url = upstream_url
         self.upstream_key = upstream_key
@@ -230,6 +315,14 @@ class GhostGateway:
         self._server: Optional[http.server.HTTPServer] = None
         self._thread: Optional[threading.Thread] = None
 
+    @staticmethod
+    def _serve_forever_safe(server: http.server.HTTPServer) -> None:
+        """Wrap serve_forever with top-level exception logging so the thread death is visible."""
+        try:
+            server.serve_forever()
+        except Exception as exc:  # noqa: BLE001
+            log.critical("GhostGateway server thread crashed: %s", exc, exc_info=True)
+
     def start(self) -> None:
         """Start the gateway in a background thread."""
         server = http.server.HTTPServer((self.host, self.port), _GhostRequestHandler)
@@ -239,7 +332,11 @@ class GhostGateway:
         server.log_requests = self.log_requests  # type: ignore[attr-defined]
         server.vapl_enabled = self.vapl_enabled  # type: ignore[attr-defined]
         self._server = server
-        self._thread = threading.Thread(target=server.serve_forever, daemon=True)
+        self._thread = threading.Thread(
+            target=self._serve_forever_safe,
+            args=(server,),
+            daemon=True,
+        )
         self._thread.start()
 
     def stop(self) -> None:
@@ -254,3 +351,11 @@ class GhostGateway:
 
     def __exit__(self, *_: Any) -> None:
         self.stop()
+
+
+__all__ = [
+    "GhostGateway",
+    "GatewayTokenError",
+    "validate_gateway_token",
+    "validate_upstream_url",
+]

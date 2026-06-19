@@ -25,6 +25,20 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+          pip install flake8 bandit
+      - name: Lint (flake8)
+        run: |
+          flake8 ghost/ \
+            --max-line-length=120 \
+            --extend-ignore=E203,W503 \
+            --exclude=ghost/vapl/__init__.py
+      - name: Security scan (bandit)
+        run: |
+          bandit -r ghost/ \
+            --severity-level medium \
+            --confidence-level medium \
+            --skip B101,B603,B607 \
+            -f txt
       - name: Test
         run: pytest -q
 
