@@ -18,6 +18,16 @@ from typing import Any, Optional
 from . import crypto
 from .store import GHOST_HOME, ResidueStore
 
+__all__ = [
+    "spawn",
+    "act",
+    "evaporate",
+    "replay",
+    "SessionError",
+    "ExpiredSessionError",
+    "ScopeError",
+]
+
 SESSIONS_DIR = GHOST_HOME / "sessions"
 
 

@@ -1,15 +1,57 @@
-# Ghost Layer
-> Dual-chain XRPL/Base toll gateway for autonomous AI agents.
+# Ghost Layer — Ephemeral Execution Layer for Autonomous Agents
+> Give your AI agent a body that vanishes. Spawn → execute → evaporate → leave signed residue.
 
-## Connect
-- MCP Endpoint: https://ghost-layer.onrender.com/mcp
-- Transport: streamable-http
-- Payment: RLUSD on XRPL or USDC on Base via x402
+## What Ghost Layer Is
+Ghost Layer is a Python CLI tool and reverse-proxy library for running AI agents with scoped, time-limited credentials. It is NOT an MCP server.
 
-## Features
-- URIToken on-chain licensing (Xahau)
-- 54-block execution matrix
-- Agent Passport loyalty tiers (Bronze → Diamond)
-- Zero custody architecture
+The core loop:
+1. `ghost spawn` — Creates an ephemeral session with a fresh Ed25519 signing key, a bearer token, a TTL (default 300s), and optional tool scopes
+2. `ghost possess` — Binds an agent to the session via a local intercept proxy
+3. `ghost act` — Records a signed, scoped action against the session (enforces allowed scopes)
+4. `ghost evaporate` — Destroys the signing key, finalizes the signed action chain (residue)
+5. `ghost replay` — Retrieves and cryptographically verifies the signed execution history
 
-## Built by ScriptMasterLabs (SDVOSB) - ScriptMasterLabs@gmail.com
+## GhostGateway (Reverse Proxy / Egress Broker)
+`ghost serve` starts a reverse proxy gateway that agents route through.
+
+Sidecar mode (your own service):
+  ghost serve --upstream http://localhost:8080
+
+Broker mode (third-party API — real key never reaches the agent):
+  ghost serve --upstream https://api.openai.com --upstream-key $UPSTREAM_KEY_FROM_ENV
+
+When `ghost evaporate` is called, the gateway IMMEDIATELY rejects any further requests with that token — even if the agent cached it.
+
+Default gateway port: 7391
+
+## Install
+  pip install ghost-layer
+
+## CLI Reference
+  ghost spawn   --intent "deploy_staging" --ttl 300 --scope aws_ec2 --scope s3
+  ghost possess --agent openai://gpt-4 --session-id <id> --port 9999
+  ghost act     --tool aws_ec2 --action RunInstances --params params.json --session-id <id>
+  ghost evaporate --session-id <id>
+  ghost replay  --session-id <id>
+  ghost replay  --all --format csv
+  ghost serve   --upstream http://localhost:8080 --port 7391
+
+## Key Security Properties
+- Ephemeral keys: private signing key exists only for the session TTL, then shredded
+- Scope enforcement: agent can only call declared tools
+- Tamper-evident residue: Ed25519-signed action chain, verifiable after evaporation
+- Broker mode: real upstream credentials never reach the agent process
+- Upstream key: always read from GHOST_UPSTREAM_KEY environment variable (never a CLI argument)
+
+## Storage
+Residue stored in SQLite (default: ~/.ghost/residue.db). Override with --db flag or GHOST_DB env var.
+
+## Deployment (Docker)
+Dockerfile available. Set GHOST_UPSTREAM_KEY as an environment variable in your container runtime — never pass it as a CLI argument.
+  Port: 7391 (default)
+  Env: GHOST_UPSTREAM_KEY, UPSTREAM_URL, PORT
+
+## Built by ScriptMasterLabs (SDVOSB)
+GitHub: https://github.com/Timwal78/ghost-layer
+Ecosystem: https://www.scriptmasterlabs.com
+Contact: ScriptMasterLabs@gmail.com

@@ -14,6 +14,8 @@ from typing import Any, Callable, Optional
 from . import session as _session
 from .store import ResidueStore
 
+__all__ = ["GhostProxy", "possess"]
+
 MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import tempfile
 import threading
 
 from .identity import ProvenanceSoul, generate_soul
@@ -18,7 +19,7 @@ def get_soul() -> ProvenanceSoul:
     if _soul is None:
         with _lock:
             if _soul is None:
-                path = os.environ.get("VAPL_SOUL_FILE", "/tmp/vapl_soul_ghost.json")
+                path = os.environ.get("VAPL_SOUL_FILE", os.path.join(tempfile.gettempdir(), "vapl_soul_ghost.json"))
                 if os.path.exists(path):
                     try:
                         with open(path) as f:

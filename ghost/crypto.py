@@ -19,6 +19,16 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
+__all__ = [
+    "generate_keypair",
+    "sign",
+    "verify",
+    "b64",
+    "unb64",
+    "sha256_hex",
+    "canonical_hash",
+]
+
 
 def generate_keypair() -> tuple[bytes, bytes]:
     """Return (private_seed_32b, public_raw_32b) for a fresh Ed25519 key."""

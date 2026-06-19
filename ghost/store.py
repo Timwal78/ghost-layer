@@ -11,7 +11,6 @@ v0.1.1 additive migration: token_hash column on sessions (backward-compatible).
 from __future__ import annotations
 
 import hashlib
-import hmac
 import os
 import sqlite3
 from pathlib import Path
@@ -19,6 +18,8 @@ from typing import Any, Optional
 
 GHOST_HOME = Path(os.environ.get("GHOST_HOME", Path.home() / ".ghost"))
 DEFAULT_DB = GHOST_HOME / "residue.db"
+
+__all__ = ["ResidueStore", "GHOST_HOME", "DEFAULT_DB"]
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (

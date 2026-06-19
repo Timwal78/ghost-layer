@@ -6,6 +6,7 @@ Give your AI agent a body that vanishes. Thin Click layer over ghost.session.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from typing import Optional
 
@@ -207,7 +208,8 @@ def replay(ctx: click.Context, session_id: Optional[str], all_: bool, fmt: str) 
 
 @cli.command()
 @click.option("--upstream", required=True, help="Upstream base URL, e.g. https://api.stripe.com")
-@click.option("--upstream-key", default=None, help="Real API key injected by gateway (broker mode). Never reaches the agent.")
+@click.option("--upstream-key", default=None,
+              help="Real API key injected by gateway (broker mode). Never reaches the agent.")
 @click.option("--port", default=7391, show_default=True, help="Gateway listen port.")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Bind address.")
 @click.option("--verbose", is_flag=True, help="Log every proxied request.")
@@ -235,6 +237,8 @@ def serve(
     any request with that token — even if the caller cached it.
     """
     store: ResidueStore = ctx.obj["store"]
+    if upstream_key is None:
+        upstream_key = os.environ.get("GHOST_UPSTREAM_KEY")
     mode = "broker" if upstream_key else "sidecar"
     click.secho(
         f"\n  GHOST Gateway — {mode} mode", fg=CYAN, bold=True
@@ -243,7 +247,7 @@ def serve(
     click.secho(f"  listen   : http://{host}:{port}", fg=CYAN)
     if upstream_key:
         click.secho(
-            f"  upstream key injected (real credential hidden from agent)", fg=GOLD
+            "  upstream key injected (real credential hidden from agent)", fg=GOLD
         )
     click.secho("\n  Token enforcement is LIVE. Evaporate kills access instantly.\n", fg=GREEN)
 
