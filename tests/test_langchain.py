@@ -1,24 +1,27 @@
 """Tests for the GhostTool LangChain wrapper."""
 
 import pytest
+
 try:
     from langchain_core.tools import BaseTool
     from ghost.langchain import GhostTool
     import ghost
     HAS_LANGCHAIN = True
+
+    class DummyTool(BaseTool):
+        name: str = "dummy_tool"
+        description: str = "A dummy tool for testing."
+
+        def _run(self, text: str) -> str:
+            if text == "fail":
+                raise ValueError("Intentional failure")
+            return f"Echo: {text}"
+
 except ImportError:
     HAS_LANGCHAIN = False
+    DummyTool = None
 
 from ghost.store import ResidueStore
-
-class DummyTool(BaseTool):
-    name: str = "dummy_tool"
-    description: str = "A dummy tool for testing."
-    
-    def _run(self, text: str) -> str:
-        if text == "fail":
-            raise ValueError("Intentional failure")
-        return f"Echo: {text}"
 
 @pytest.mark.skipif(not HAS_LANGCHAIN, reason="langchain-core not installed")
 def test_ghost_tool_wrapper(tmp_path):
