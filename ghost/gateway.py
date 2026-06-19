@@ -98,7 +98,26 @@ class _GhostRequestHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _serve_vapl_manifest(self) -> None:
+        try:
+            from .vapl.middleware import build_vapl_manifest
+            payload = json.dumps(build_vapl_manifest(), indent=2).encode()
+        except Exception as exc:  # noqa: BLE001
+            payload = json.dumps({"error": str(exc)}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "public, max-age=3600")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def _handle(self) -> None:
+        # VAPL discovery — unauthenticated, no token required
+        if self.path == "/.well-known/vapl.json":
+            self._serve_vapl_manifest()
+            return
+
         raw_token = self.headers.get(_GHOST_TOKEN_HEADER, "")
         # Open a fresh connection in this handler thread (SQLite is not thread-safe).
         db_path = self.server.db_path  # type: ignore[attr-defined]
@@ -138,12 +157,17 @@ class _GhostRequestHandler(http.server.BaseHTTPRequestHandler):
                 headers=fwd_headers,
                 method=self.command,
             )
+            vapl_enabled: bool = getattr(self.server, "vapl_enabled", False)  # type: ignore[attr-defined]
             try:
                 with urllib.request.urlopen(req, timeout=30) as resp:
                     resp_body = resp.read()
                     self.send_response(resp.status)
                     for k, v in resp.headers.items():
                         if k.lower() not in {"transfer-encoding", "connection"}:
+                            self.send_header(k, v)
+                    if vapl_enabled and 200 <= resp.status < 300:
+                        from .vapl.middleware import emit_vapl_headers
+                        for k, v in emit_vapl_headers(session_info, self.path, resp.status).items():
                             self.send_header(k, v)
                     self.end_headers()
                     self.wfile.write(resp_body)
@@ -194,6 +218,7 @@ class GhostGateway:
         port: int = 7391,
         host: str = "127.0.0.1",
         log_requests: bool = False,
+        vapl_enabled: bool = True,
     ) -> None:
         self.store = store
         self.upstream_url = upstream_url
@@ -201,6 +226,7 @@ class GhostGateway:
         self.port = port
         self.host = host
         self.log_requests = log_requests
+        self.vapl_enabled = vapl_enabled
         self._server: Optional[http.server.HTTPServer] = None
         self._thread: Optional[threading.Thread] = None
 
@@ -211,6 +237,7 @@ class GhostGateway:
         server.upstream_url = self.upstream_url  # type: ignore[attr-defined]
         server.upstream_key = self.upstream_key  # type: ignore[attr-defined]
         server.log_requests = self.log_requests  # type: ignore[attr-defined]
+        server.vapl_enabled = self.vapl_enabled  # type: ignore[attr-defined]
         self._server = server
         self._thread = threading.Thread(target=server.serve_forever, daemon=True)
         self._thread.start()
