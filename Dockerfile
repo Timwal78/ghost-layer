@@ -2,6 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Prevent glibc memory fragmentation (OOM Fix)
+ENV MALLOC_ARENA_MAX=2
+ENV PYTHONUNBUFFERED=1
+
 # Copy the ghost-layer package source
 COPY . /app/
 
