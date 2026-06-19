@@ -235,7 +235,7 @@ class _GhostRequestHandler(http.server.BaseHTTPRequestHandler):
             )
             vapl_enabled: bool = getattr(self.server, "vapl_enabled", False)  # type: ignore[attr-defined]
             try:
-                with urllib.request.urlopen(req, timeout=30) as resp:
+                with urllib.request.urlopen(req, timeout=30) as resp:  # nosec B310 — scheme validated by validate_upstream_url()
                     resp_body = resp.read()
                     self.send_response(resp.status)
                     for k, v in resp.headers.items():
