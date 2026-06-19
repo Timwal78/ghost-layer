@@ -21,4 +21,4 @@ ENV PORT=7391
 ENV UPSTREAM_URL=""
 ENV UPSTREAM_KEY=""
 
-ENTRYPOINT ["sh", "-c", "ghost serve --host 0.0.0.0 --port $PORT --upstream $UPSTREAM_URL --upstream-key $UPSTREAM_KEY"]
+ENTRYPOINT ["sh", "-c", "ghost serve --host 0.0.0.0 --port $PORT --upstream $UPSTREAM_URL"]

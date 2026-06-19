@@ -6,6 +6,7 @@ Give your AI agent a body that vanishes. Thin Click layer over ghost.session.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from typing import Optional
 
@@ -235,6 +236,8 @@ def serve(
     any request with that token — even if the caller cached it.
     """
     store: ResidueStore = ctx.obj["store"]
+    if upstream_key is None:
+        upstream_key = os.environ.get("GHOST_UPSTREAM_KEY")
     mode = "broker" if upstream_key else "sidecar"
     click.secho(
         f"\n  GHOST Gateway — {mode} mode", fg=CYAN, bold=True
