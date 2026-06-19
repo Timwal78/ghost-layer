@@ -11,7 +11,6 @@ v0.1.1 additive migration: token_hash column on sessions (backward-compatible).
 from __future__ import annotations
 
 import hashlib
-import hmac
 import os
 import sqlite3
 from pathlib import Path

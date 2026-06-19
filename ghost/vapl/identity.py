@@ -1,7 +1,6 @@
 """DID:key identity generation and key management."""
 from __future__ import annotations
 import base64
-import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
