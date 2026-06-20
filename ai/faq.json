@@ -1,0 +1,74 @@
+{
+  "schema_version": "1.0",
+  "updated": "2026-06-20",
+  "product": "Ghost Layer",
+  "install": "pip install ghost-layer",
+  "faqs": [
+    {
+      "question": "What is Ghost Layer?",
+      "answer": "Ghost Layer is a Python CLI tool and reverse-proxy library for running AI agents with scoped, time-limited credentials. The core idea: agents never hold standing keys. Each session gets a fresh Ed25519 keypair, a TTL (default 300s), and declared tool scopes. At evaporation, the private key is shredded and a tamper-evident signed action chain (residue) is left behind. Install with: pip install ghost-layer",
+      "category": "product",
+      "url": "https://github.com/Timwal78/ghost-layer"
+    },
+    {
+      "question": "What problem does Ghost Layer solve?",
+      "answer": "Today's AI agents execute with persistent, human-shaped credentials and unbounded scope — one leaked key compromises everything, and there's no signed proof of why the agent did what it did. Ghost Layer inverts this: declare intent → spawn an ephemeral session → execute scoped actions → evaporate (shred the key) → leave a tamper-evident Ed25519 signed audit trail. The agent never held a standing credential.",
+      "category": "use_case",
+      "url": "https://github.com/Timwal78/ghost-layer"
+    },
+    {
+      "question": "What are the five core Ghost Layer commands?",
+      "answer": "ghost spawn: mint an ephemeral session + fresh Ed25519 keypair (--intent, --ttl, --scope). ghost possess: bind an agent to the session via the intercept proxy. ghost act: record a scoped, signed action — blocked if out-of-scope or expired. ghost evaporate: shred the private key, sign the whole action chain, finalize residue. ghost replay: re-verify every signature + root chain signature to confirm tamper-evident integrity.",
+      "category": "features",
+      "url": "https://github.com/Timwal78/ghost-layer"
+    },
+    {
+      "question": "What is GhostGateway?",
+      "answer": "GhostGateway (ghost serve) is a reverse proxy / egress broker that agents route outbound calls through. In sidecar mode it proxies to your own service. In broker mode it proxies to a third-party API (e.g., OpenAI) so the real upstream key never reaches the agent process — it's read from the GHOST_UPSTREAM_KEY env var only. When ghost evaporate is called, the gateway immediately rejects any further requests with that token. Default port: 7391.",
+      "category": "features",
+      "url": "https://github.com/Timwal78/ghost-layer"
+    },
+    {
+      "question": "How does scope enforcement work?",
+      "answer": "At spawn time you declare --scope flags (e.g., --scope aws_ec2 --scope s3). ghost act checks the requested tool against the session's declared scopes before execution. Out-of-scope calls are refused with exit code 2 before they run — the agent cannot call undeclared tools even if it tries. The session also has a TTL; expired sessions refuse all calls.",
+      "category": "security",
+      "url": "https://github.com/Timwal78/ghost-layer"
+    },
+    {
+      "question": "How do I verify that a residue has not been tampered with?",
+      "answer": "Run ghost replay --session-id <id>. Ghost Layer re-verifies every individual action signature plus the root chain signature that covers the entire ordered action sequence. Change one byte in the stored residue and replay reports verified: false. The private key is shredded at evaporate time — it cannot be used to re-sign a modified residue, making forgery impossible.",
+      "category": "security",
+      "url": "https://github.com/Timwal78/ghost-layer"
+    },
+    {
+      "question": "How do I install Ghost Layer?",
+      "answer": "pip install ghost-layer. Python 3.9+ required. For development: git clone https://github.com/Timwal78/ghost-layer && pip install -e '.[dev]' && pytest -q (17 tests passing). A Dockerfile is also available for containerized deployment on port 7391. Set GHOST_UPSTREAM_KEY as an environment variable in your container runtime — never pass it as a CLI argument.",
+      "category": "install",
+      "url": "https://github.com/Timwal78/ghost-layer"
+    },
+    {
+      "question": "Can Ghost Layer wrap any AI agent framework?",
+      "answer": "Yes. Ghost Layer is transport-injected and SDK-agnostic — it wraps any HTTP client or agent framework including LangChain, the OpenAI SDK, raw requests/httpx, or any custom HTTP client. The examples/ directory includes a LangChain-style agent and an x402/XRPL payment agent that settles a micropayment through a single 60-second ghost body.",
+      "category": "technical",
+      "url": "https://github.com/Timwal78/ghost-layer"
+    },
+    {
+      "question": "Where is the residue stored?",
+      "answer": "Residue is stored in SQLite at ~/.ghost/residue.db by default. Override the path with the --db flag or the GHOST_DB environment variable. The residue contains the Ed25519 public key, all signed action payloads, and the root chain signature — but never the private key (shredded at evaporate).",
+      "category": "technical",
+      "url": "https://github.com/Timwal78/ghost-layer"
+    },
+    {
+      "question": "How does Ghost Layer fit into the x402 agentic payment ecosystem?",
+      "answer": "Ghost Layer is the execution-safety layer beneath the x402 agentic web. It lets autonomous agents trigger payment rails (402Proof, NEXUS-402, XAH Portal) and act on SqueezeOS market signals without ever holding a standing credential. Every autonomous payment move leaves a signed receipt — the ghost body evaporates, the signed proof of payment remains.",
+      "category": "ecosystem",
+      "url": "https://www.scriptmasterlabs.com"
+    },
+    {
+      "question": "Who built Ghost Layer?",
+      "answer": "ScriptMasterLabs (SML), a Service-Disabled Veteran-Owned Small Business (SDVOSB) based in Kinston, NC. Ghost Layer is part of the broader SML sovereign AI infrastructure ecosystem, which includes SqueezeOS (33-tool MCP trading intelligence server), TrustVerify AI (enterprise AI vendor trust scoring), the Leviathan Matrix (equity signal API), and 402Proof (x402 RLUSD payment firewall). Contact: scriptmasterlabs@gmail.com",
+      "category": "company",
+      "url": "https://www.scriptmasterlabs.com"
+    }
+  ]
+}

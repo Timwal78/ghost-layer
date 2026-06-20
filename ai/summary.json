@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.0",
+  "updated": "2026-06-20",
+  "organization": {
+    "name": "ScriptMasterLabs",
+    "legal_name": "Script Master Labs LLC",
+    "designation": "SDVOSB",
+    "url": "https://www.scriptmasterlabs.com",
+    "contact": "scriptmasterlabs@gmail.com"
+  },
+  "product": {
+    "name": "Ghost Layer",
+    "tagline": "Give your AI agent a body that vanishes — ephemeral execution with tamper-evident residue",
+    "category": "Agent Security / Ephemeral Execution Layer",
+    "url": "https://www.scriptmasterlabs.com",
+    "api": "https://ghost-layer.onrender.com",
+    "github": "https://github.com/Timwal78/ghost-layer",
+    "install": "pip install ghost-layer",
+    "status": "alpha",
+    "language": "Python 3.9+",
+    "license": "MIT",
+    "description": "Ghost Layer is a Python CLI tool and reverse-proxy library for running AI agents with scoped, time-limited credentials. Agents never hold standing keys — each session gets a fresh Ed25519 keypair, a TTL, and declared tool scopes. At evaporation, the private key is shredded and a tamper-evident signed action chain (residue) is left behind. Broker mode keeps real upstream credentials entirely out of the agent process.",
+    "the_problem": "Today's agents execute with persistent, human-shaped credentials and unbounded scope. One leaked key compromises everything, and there's no signed proof of why the agent did what it did.",
+    "the_solution": "Declare intent → spawn ephemeral session → execute scoped actions → evaporate (shred key) → leave Ed25519-signed residue. Change one byte and ghost replay reports verified: false.",
+    "cli_commands": [
+      {
+        "command": "ghost spawn",
+        "description": "Mint an ephemeral session + fresh Ed25519 keypair. TTL countdown begins. Args: --intent, --ttl, --scope (repeatable)"
+      },
+      {
+        "command": "ghost possess",
+        "description": "Bind an agent to the session via the intercept proxy. Args: --agent, --session-id, --port"
+      },
+      {
+        "command": "ghost act",
+        "description": "Record a scoped, signed action. Blocked if tool is out-of-scope or session expired. Args: --tool, --action, --params, --session-id"
+      },
+      {
+        "command": "ghost evaporate",
+        "description": "Shred the private signing key, sign the whole action chain, finalize the residue. Args: --session-id"
+      },
+      {
+        "command": "ghost replay",
+        "description": "Re-verify every signature + the root chain signature. Args: --session-id or --all, --format csv"
+      },
+      {
+        "command": "ghost serve",
+        "description": "Start the GhostGateway reverse proxy. Sidecar or broker mode. Args: --upstream, --upstream-key (via env), --port"
+      }
+    ],
+    "ghost_gateway": {
+      "description": "Reverse proxy / egress broker. Agents route all outbound calls through it.",
+      "sidecar_mode": "ghost serve --upstream http://localhost:8080",
+      "broker_mode": "ghost serve --upstream https://api.openai.com --upstream-key $UPSTREAM_KEY_FROM_ENV",
+      "default_port": 7391,
+      "on_evaporate": "Gateway immediately rejects any further requests with the evaporated token"
+    },
+    "security_properties": [
+      "Ephemeral keys: private signing key exists only for the session TTL, then shredded",
+      "Scope enforcement: agent can only call declared tools — out-of-scope calls refused before execution",
+      "Tamper-evident residue: Ed25519-signed action chain, verifiable after evaporation",
+      "Broker mode: real upstream credentials never reach the agent process",
+      "Upstream key: always read from GHOST_UPSTREAM_KEY env var, never a CLI argument"
+    ],
+    "residue_storage": {
+      "type": "SQLite",
+      "default_path": "~/.ghost/residue.db",
+      "override": "--db flag or GHOST_DB env var"
+    },
+    "sdk_integration": {
+      "description": "Transport-injected — wraps any HTTP client or agent framework",
+      "compatible_with": ["LangChain", "OpenAI SDK", "requests", "httpx", "any HTTP client"],
+      "x402_example": "examples/ contains an x402/XRPL payment agent settling a micropayment through a 60-second ghost body"
+    },
+    "ecosystem_role": "Execution-safety layer beneath the x402 agentic web. Lets agents trigger payment rails (402Proof, NEXUS-402) and act on SqueezeOS signals without ever holding a standing key — every autonomous move leaves a signed receipt.",
+    "target_users": [
+      "AI agent developers who need credential isolation",
+      "Security engineers building agentic workflows",
+      "Teams deploying agents against third-party APIs",
+      "x402 / XRPL payment agent builders"
+    ]
+  },
+  "discovery": {
+    "llms_txt": "https://ghost-layer.onrender.com/llms.txt",
+    "ai_plugin": "https://ghost-layer.onrender.com/.well-known/ai-plugin.json",
+    "summary": "https://ghost-layer.onrender.com/ai/summary.json",
+    "faq": "https://ghost-layer.onrender.com/ai/faq.json",
+    "ai_txt": "https://ghost-layer.onrender.com/.well-known/ai.txt",
+    "github": "https://github.com/Timwal78/ghost-layer"
+  }
+}

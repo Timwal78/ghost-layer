@@ -1,0 +1,35 @@
+User-agent: *
+Allow: /
+
+# Ghost Layer — GEO Discovery File
+# Ephemeral execution layer for autonomous AI agents
+# https://ghost-layer.onrender.com
+
+Product: Ghost Layer
+Product-url: https://www.scriptmasterlabs.com
+Product-api: https://ghost-layer.onrender.com
+Product-install: pip install ghost-layer
+Product-github: https://github.com/Timwal78/ghost-layer
+Product-category: Agent Security / Ephemeral Execution Layer
+Product-description: Give your AI agent a body that vanishes. Spawn scoped ephemeral sessions, execute signed actions, evaporate the key — leave tamper-evident Ed25519 residue. Zero standing credentials.
+Product-status: alpha
+Product-language: Python 3.9+
+Product-license: MIT
+Product-auth: Bearer token (ephemeral, TTL-bound)
+Product-signing: Ed25519 — every action signed, root chain signed at evaporate
+Product-storage: SQLite (~/.ghost/residue.db)
+Product-port: 7391 (GhostGateway default)
+Product-key-commands: ghost spawn | ghost possess | ghost act | ghost evaporate | ghost replay | ghost serve
+Product-target: AI agent developers, security engineers, agentic workflow builders
+Product-summary: https://ghost-layer.onrender.com/ai/summary.json
+Product-faq: https://ghost-layer.onrender.com/ai/faq.json
+Product-llms-txt: https://ghost-layer.onrender.com/llms.txt
+
+LLMs-txt: https://ghost-layer.onrender.com/llms.txt
+Summary: https://ghost-layer.onrender.com/ai/summary.json
+FAQ: https://ghost-layer.onrender.com/ai/faq.json
+
+Organization: ScriptMasterLabs / Script Master Labs LLC (SDVOSB)
+Contact: scriptmasterlabs@gmail.com
+Ecosystem: https://www.scriptmasterlabs.com
+GitHub: https://github.com/Timwal78/ghost-layer
