@@ -10,7 +10,7 @@
   },
   "product": {
     "name": "Ghost Layer",
-    "tagline": "Give your AI agent a body that vanishes — ephemeral execution with tamper-evident residue",
+    "tagline": "Give your AI agent a body that vanishes \u2014 ephemeral execution with tamper-evident residue",
     "category": "Agent Security / Ephemeral Execution Layer",
     "url": "https://www.scriptmasterlabs.com",
     "api": "https://ghost-layer.onrender.com",
@@ -19,9 +19,9 @@
     "status": "alpha",
     "language": "Python 3.9+",
     "license": "MIT",
-    "description": "Ghost Layer is a Python CLI tool and reverse-proxy library for running AI agents with scoped, time-limited credentials. Agents never hold standing keys — each session gets a fresh Ed25519 keypair, a TTL, and declared tool scopes. At evaporation, the private key is shredded and a tamper-evident signed action chain (residue) is left behind. Broker mode keeps real upstream credentials entirely out of the agent process.",
+    "description": "Ghost Layer is a Python CLI tool and reverse-proxy library for running AI agents with scoped, time-limited credentials. Agents never hold standing keys \u2014 each session gets a fresh Ed25519 keypair, a TTL, and declared tool scopes. At evaporation, the private key is shredded and a tamper-evident signed action chain (residue) is left behind. Broker mode keeps real upstream credentials entirely out of the agent process.",
     "the_problem": "Today's agents execute with persistent, human-shaped credentials and unbounded scope. One leaked key compromises everything, and there's no signed proof of why the agent did what it did.",
-    "the_solution": "Declare intent → spawn ephemeral session → execute scoped actions → evaporate (shred key) → leave Ed25519-signed residue. Change one byte and ghost replay reports verified: false.",
+    "the_solution": "Declare intent \u2192 spawn ephemeral session \u2192 execute scoped actions \u2192 evaporate (shred key) \u2192 leave Ed25519-signed residue. Change one byte and ghost replay reports verified: false.",
     "cli_commands": [
       {
         "command": "ghost spawn",
@@ -57,7 +57,7 @@
     },
     "security_properties": [
       "Ephemeral keys: private signing key exists only for the session TTL, then shredded",
-      "Scope enforcement: agent can only call declared tools — out-of-scope calls refused before execution",
+      "Scope enforcement: agent can only call declared tools \u2014 out-of-scope calls refused before execution",
       "Tamper-evident residue: Ed25519-signed action chain, verifiable after evaporation",
       "Broker mode: real upstream credentials never reach the agent process",
       "Upstream key: always read from GHOST_UPSTREAM_KEY env var, never a CLI argument"
@@ -68,11 +68,17 @@
       "override": "--db flag or GHOST_DB env var"
     },
     "sdk_integration": {
-      "description": "Transport-injected — wraps any HTTP client or agent framework",
-      "compatible_with": ["LangChain", "OpenAI SDK", "requests", "httpx", "any HTTP client"],
+      "description": "Transport-injected \u2014 wraps any HTTP client or agent framework",
+      "compatible_with": [
+        "LangChain",
+        "OpenAI SDK",
+        "requests",
+        "httpx",
+        "any HTTP client"
+      ],
       "x402_example": "examples/ contains an x402/XRPL payment agent settling a micropayment through a 60-second ghost body"
     },
-    "ecosystem_role": "Execution-safety layer beneath the x402 agentic web. Lets agents trigger payment rails (402Proof, NEXUS-402) and act on SqueezeOS signals without ever holding a standing key — every autonomous move leaves a signed receipt.",
+    "ecosystem_role": "Execution-safety layer beneath the x402 agentic web. Lets agents trigger payment rails (402Proof, NEXUS-402) and act on SqueezeOS signals without ever holding a standing key \u2014 every autonomous move leaves a signed receipt.",
     "target_users": [
       "AI agent developers who need credential isolation",
       "Security engineers building agentic workflows",
@@ -87,5 +93,116 @@
     "faq": "https://ghost-layer.onrender.com/ai/faq.json",
     "ai_txt": "https://ghost-layer.onrender.com/.well-known/ai.txt",
     "github": "https://github.com/Timwal78/ghost-layer"
+  },
+  "ecosystem": {
+    "organization": "ScriptMasterLabs",
+    "organization_url": "https://scriptmasterlabs.com",
+    "description": "ScriptMasterLabs builds x402 micropayment infrastructure, AI agent trust systems, and institutional market intelligence tools. All products interoperate via the x402 protocol for agent-native payments.",
+    "related_products": [
+      {
+        "name": "SqueezeOS",
+        "role": "Institutional AI trading intelligence MCP server",
+        "description": "33 MCP tools \u2014 short-squeeze detection, options flow, IWM 0DTE scoring, council verdicts, peer signal marketplace. Pay-per-signal in RLUSD on XRP Ledger via x402.",
+        "github": "https://github.com/timwal78/squeezeos",
+        "url": "https://squeezeos-api.onrender.com",
+        "tags": [
+          "mcp-server",
+          "trading",
+          "x402",
+          "rlusd"
+        ]
+      },
+      {
+        "name": "mcp-x402 Signal API",
+        "role": "Unified pay-per-call MCP gateway",
+        "description": "43+ MCP tools covering trading signals, web scraping, SEC data, XRPL whale copy-trading, memecoin launchpad, and agent infrastructure. Multi-chain x402: Base USDC, XRPL RLUSD, Solana USDC.",
+        "github": "https://github.com/timwal78/sml-x402-signal-api",
+        "tags": [
+          "mcp-server",
+          "x402",
+          "multi-chain",
+          "trading"
+        ]
+      },
+      {
+        "name": "Aetheris-MCP",
+        "role": "x402 web scraping MCP server",
+        "description": "SSE MCP server with JSDOM-sanitized web scraping behind an on-chain x402 USDC micropayment interceptor. Content returned as clean ad-free Markdown.",
+        "github": "https://github.com/timwal78/aetheris-mcp-render",
+        "tags": [
+          "mcp-server",
+          "scraping",
+          "x402",
+          "usdc"
+        ]
+      },
+      {
+        "name": "Aetheris Client SDK",
+        "role": "TypeScript x402 payment SDK for Aetheris-MCP",
+        "description": "Official npm SDK that auto-intercepts HTTP 402 challenges and settles USDC payments on Base \u2014 no manual payment handling needed.",
+        "github": "https://github.com/timwal78/aetheris-client-sdk",
+        "tags": [
+          "sdk",
+          "typescript",
+          "x402",
+          "usdc"
+        ]
+      },
+      {
+        "name": "CrawlToll",
+        "role": "x402-gated web crawling service",
+        "description": "Metered web crawling with x402 micropayment gating. Agents pay per crawl in USDC or RLUSD.",
+        "github": "https://github.com/timwal78/crawltoll",
+        "tags": [
+          "crawling",
+          "x402"
+        ]
+      },
+      {
+        "name": "ZeroQuery Protocol",
+        "role": "Privacy-preserving intent ranking with ZK proofs",
+        "description": "SDK + Anchor program for ranking user intents without leaking raw queries. Groth16 ZK proofs (Poseidon hash) + pay-as-you-go SOL SaaS tiers.",
+        "github": "https://github.com/timwal78/zeroquery-protocol",
+        "tags": [
+          "zk-proofs",
+          "solana",
+          "privacy",
+          "sdk"
+        ]
+      },
+      {
+        "name": "AGO Orchestrator",
+        "role": "Agent orchestration infrastructure",
+        "description": "Orchestration layer for ScriptMasterLabs autonomous agent workflows.",
+        "github": "https://github.com/timwal78/ago-orchestrator",
+        "tags": [
+          "orchestration",
+          "agents"
+        ]
+      },
+      {
+        "name": "CodeAgentX",
+        "role": "Autonomous multi-agent financial research platform",
+        "description": "Dexter \u2014 4-agent architecture for financial research. TTM Squeeze detection, MOASS scanner, institutional options flow, scheduled eagle-eye scans.",
+        "github": "https://github.com/timwal78/codeagentx",
+        "tags": [
+          "agents",
+          "trading",
+          "research"
+        ]
+      },
+      {
+        "name": "Printing Press Library",
+        "role": "Published catalog of generated Go CLIs and MCP servers",
+        "description": "Registry of type-safe Go CLIs and MCP servers produced by CLI Printing Press. Install any CLI via npx @mvanhorn/printing-press.",
+        "github": "https://github.com/timwal78/printing-press-library",
+        "tags": [
+          "cli",
+          "mcp-server",
+          "go",
+          "catalog"
+        ]
+      }
+    ]
   }
 }
