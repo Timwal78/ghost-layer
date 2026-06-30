@@ -1,4 +1,4 @@
-"""ghost/gateway.py — Enforcement layer for GHOST (v0.1.1).
+"""ghost/gateway.py — Enforcement layer for GHOST (v0.2.0).
 
 Runs a reverse-proxy / egress-broker that enforces token liveness.
 The agent sends requests to the gateway carrying X-Ghost-Token. The
@@ -12,6 +12,14 @@ Any subsequent gateway request with that token gets HTTP 401 —
 even if the caller cached the token. This is the upstream-enforcement
 gap closed by v0.1.1.
 
+v0.2.0 additions:
+  - X-402-Proof-Receipt header on every successful proxied response.
+    Contains a base64-encoded JSON receipt agents can use to prove delivery.
+    Fields: receipt_id, session_id, path, upstream_status, delivered_at,
+            response_bytes, gateway_version.
+  - X-402-Cache-Status header: MISS on live upstream hits.
+  - Idempotency: X-Ghost-Idempotency-Key deduplication within session scope.
+
 Usage (CLI wired in cli.py):
     ghost serve --upstream https://your-api.example.com --port 7391
     ghost serve --upstream https://api.stripe.com --upstream-key sk_live_... --port 7391
@@ -20,15 +28,19 @@ The agent's HTTP client must:
     - Target  http://localhost:7391  (or wherever ghost serve listens)
     - Send    X-Ghost-Token: ghtok_<hex>
     - Send    X-Ghost-Session: gh_<hex>   (optional; gateway resolves from token)
+    - Send    X-Ghost-Idempotency-Key: <unique-key>   (optional; prevents duplicate upstream calls)
     - Omit    Authorization header (gateway injects the upstream key if --upstream-key set)
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import http.server
 import ipaddress
 import json
 import logging
+import os
 import socket
 import threading
 import urllib.error
@@ -116,6 +128,106 @@ class GatewayTokenError(Exception):
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+# ─── 402Proof receipt ─────────────────────────────────────────────────────────
+
+_GATEWAY_VERSION = "ghost-layer/0.2.0"
+
+
+def build_proof_receipt(
+    session_id: str,
+    path: str,
+    upstream_status: int,
+    response_bytes: int,
+) -> str:
+    """Build a base64-encoded JSON 402Proof receipt for a delivered response.
+
+    The receipt is deterministic for the same (session_id, path, delivered_at
+    truncated to minute) so agents can detect duplicates without storing state.
+
+    Fields:
+        receipt_id       — sha256(session_id + path + delivered_at_minute)[:16]
+        session_id       — Ghost Layer session identifier
+        path             — request path forwarded to upstream
+        upstream_status  — HTTP status returned by upstream
+        delivered_at     — ISO 8601 UTC timestamp
+        response_bytes   — byte length of the upstream response body
+        gateway_version  — ghost-layer version string
+        delivery_status  — "delivered" | "upstream_error"
+    """
+    delivered_at = _now().isoformat()
+    delivered_minute = delivered_at[:16]  # YYYY-MM-DDTHH:MM
+
+    receipt_input = f"{session_id}{path}{delivered_minute}".encode()
+    receipt_id = hashlib.sha256(receipt_input).hexdigest()[:16]
+
+    delivery_status = "delivered" if 200 <= upstream_status < 300 else "upstream_error"
+
+    receipt: dict[str, Any] = {
+        "receipt_id": receipt_id,
+        "session_id": session_id,
+        "path": path,
+        "upstream_status": upstream_status,
+        "delivered_at": delivered_at,
+        "response_bytes": response_bytes,
+        "gateway_version": _GATEWAY_VERSION,
+        "delivery_status": delivery_status,
+    }
+
+    return base64.b64encode(json.dumps(receipt, separators=(",", ":")).encode()).decode()
+
+
+# ─── In-process idempotency cache (session-scoped) ───────────────────────────
+
+class _IdempotencyCache:
+    """Thread-safe LRU-like cache for idempotency key → cached response.
+
+    Scope: per-gateway-process. Entries expire after ttl_seconds.
+    Key: sha256(session_id + idempotency_key) so keys are session-scoped.
+    """
+
+    _TTL_SECONDS = 300
+
+    def __init__(self) -> None:
+        self._store: dict[str, dict[str, Any]] = {}
+        self._lock = threading.Lock()
+
+    def _make_key(self, session_id: str, idempotency_key: str) -> str:
+        raw = f"{session_id}:{idempotency_key}".encode()
+        return hashlib.sha256(raw).hexdigest()
+
+    def get(self, session_id: str, idempotency_key: str) -> Optional[dict[str, Any]]:
+        key = self._make_key(session_id, idempotency_key)
+        with self._lock:
+            record = self._store.get(key)
+            if record is None:
+                return None
+            age = (_now() - record["cached_at"]).total_seconds()
+            if age > self._TTL_SECONDS:
+                del self._store[key]
+                return None
+            return record
+
+    def set(
+        self,
+        session_id: str,
+        idempotency_key: str,
+        status: int,
+        body: bytes,
+        headers: dict[str, str],
+    ) -> None:
+        key = self._make_key(session_id, idempotency_key)
+        with self._lock:
+            self._store[key] = {
+                "cached_at": _now(),
+                "status": status,
+                "body": body,
+                "headers": headers,
+            }
+
+
+_idempotency_cache = _IdempotencyCache()
 
 
 def validate_gateway_token(store: ResidueStore, raw_token: str) -> dict[str, Any]:
@@ -208,13 +320,30 @@ class _GhostRequestHandler(http.server.BaseHTTPRequestHandler):
                 self._send_json(401, {"error": "session_expired", "detail": str(exc)})
                 return
 
-            # Build forwarded headers — strip ghost + caller auth, inject upstream key
+            session_id: str = session_info["session_id"]
+
+            # ── Idempotency check ─────────────────────────────────────────
+            idempotency_key: Optional[str] = self.headers.get("X-Ghost-Idempotency-Key")
+            if idempotency_key:
+                cached = _idempotency_cache.get(session_id, idempotency_key)
+                if cached is not None:
+                    self.send_response(cached["status"])
+                    for k, v in cached["headers"].items():
+                        self.send_header(k, v)
+                    self.send_header("X-Ghost-Idempotency-Replayed", "true")
+                    self._add_security_headers()
+                    self.end_headers()
+                    self.wfile.write(cached["body"])
+                    return
+
+            # ── Build forwarded headers — strip ghost + caller auth ───────
+            _blocked = _BLOCKED_REQUEST_HEADERS | {"x-ghost-idempotency-key"}
             fwd_headers = {
                 k: v
                 for k, v in self.headers.items()
-                if k.lower() not in _BLOCKED_REQUEST_HEADERS
+                if k.lower() not in _blocked
             }
-            fwd_headers["X-Ghost-Session"] = session_info["session_id"]
+            fwd_headers["X-Ghost-Session"] = session_id
             fwd_headers["X-Ghost-Scopes"] = ",".join(session_info["scopes"])
 
             upstream_key: Optional[str] = self.server.upstream_key  # type: ignore[attr-defined]
@@ -237,25 +366,63 @@ class _GhostRequestHandler(http.server.BaseHTTPRequestHandler):
             try:
                 with urllib.request.urlopen(req, timeout=30) as resp:  # nosec B310
                     resp_body = resp.read()
+
+                    # Build 402Proof receipt for successful deliveries
+                    receipt_b64 = build_proof_receipt(
+                        session_id=session_id,
+                        path=self.path,
+                        upstream_status=resp.status,
+                        response_bytes=len(resp_body),
+                    )
+
+                    # Collect response headers for idempotency cache
+                    resp_headers: dict[str, str] = {}
+
                     self.send_response(resp.status)
                     for k, v in resp.headers.items():
                         if k.lower() not in {"transfer-encoding", "connection"}:
                             self.send_header(k, v)
+                            resp_headers[k] = v
                     if vapl_enabled and 200 <= resp.status < 300:
                         from .vapl.middleware import emit_vapl_headers
                         for k, v in emit_vapl_headers(session_info, self.path, resp.status).items():
                             self.send_header(k, v)
+                            resp_headers[k] = v
+                    # Emit 402Proof receipt and cache metadata headers
+                    self.send_header("X-402-Proof-Receipt", receipt_b64)
+                    self.send_header("X-402-Cache-Status", "MISS")
+                    self.send_header("X-Ghost-Gateway-Version", _GATEWAY_VERSION)
                     self._add_security_headers()
                     self.end_headers()
                     self.wfile.write(resp_body)
+
+                    # Cache for idempotency replay
+                    if idempotency_key and 200 <= resp.status < 300:
+                        resp_headers["X-402-Proof-Receipt"] = receipt_b64
+                        resp_headers["X-402-Cache-Status"] = "HIT"
+                        resp_headers["X-Ghost-Gateway-Version"] = _GATEWAY_VERSION
+                        _idempotency_cache.set(
+                            session_id, idempotency_key,
+                            status=resp.status,
+                            body=resp_body,
+                            headers=resp_headers,
+                        )
+
             except urllib.error.HTTPError as exc:
                 resp_body = exc.read()
+                receipt_b64 = build_proof_receipt(
+                    session_id=session_id,
+                    path=self.path,
+                    upstream_status=exc.code,
+                    response_bytes=len(resp_body),
+                )
                 self.send_response(exc.code)
+                self.send_header("X-402-Proof-Receipt", receipt_b64)
+                self.send_header("X-402-Cache-Status", "MISS")
                 self._add_security_headers()
                 self.end_headers()
                 self.wfile.write(resp_body)
             except Exception as exc:  # noqa: BLE001
-                # Log internally but do not leak upstream topology to callers.
                 log.warning("upstream request failed: %s", exc)
                 self._send_json(502, {"error": "upstream_error", "detail": "upstream request failed"})
         finally:
