@@ -42,6 +42,7 @@ import json
 import logging
 import os
 import socket
+import struct
 import threading
 import urllib.error
 import urllib.parse
@@ -230,6 +231,50 @@ class _IdempotencyCache:
 _idempotency_cache = _IdempotencyCache()
 
 
+# ─── Ghost Cube WebSocket broadcaster ────────────────────────────────────────
+# Clients connect via GET /ws/cube (Upgrade: websocket).
+# The gateway broadcasts a JSON event after every proxied request.
+# Uses raw WebSocket framing — no external library required.
+
+_ws_clients: dict[str, Any] = {}   # conn_id → wfile
+_ws_lock = threading.Lock()
+
+
+def _ws_send_text(wfile: Any, text: str) -> None:
+    """Encode and write a single WebSocket text frame (opcode 0x01)."""
+    payload = text.encode("utf-8")
+    length = len(payload)
+    header = bytearray([0x81])  # FIN=1, opcode=text
+    if length < 126:
+        header.append(length)
+    elif length < 65_536:
+        header.append(126)
+        header.extend(struct.pack(">H", length))
+    else:
+        header.append(127)
+        header.extend(struct.pack(">Q", length))
+    wfile.write(bytes(header) + payload)
+    wfile.flush()
+
+
+def broadcast_cube_event(event: dict[str, Any]) -> None:
+    """Broadcast a JSON event to all connected Ghost Cube WebSocket clients.
+
+    Called after every successful proxied upstream request. Dead connections
+    are removed from the registry on first failed write.
+    """
+    text = json.dumps(event, separators=(",", ":"))
+    dead: list[str] = []
+    with _ws_lock:
+        for conn_id, wfile in list(_ws_clients.items()):
+            try:
+                _ws_send_text(wfile, text)
+            except Exception:  # noqa: BLE001
+                dead.append(conn_id)
+        for conn_id in dead:
+            _ws_clients.pop(conn_id, None)
+
+
 def validate_gateway_token(store: ResidueStore, raw_token: str) -> dict[str, Any]:
     """Validate an inbound X-Ghost-Token and return session info.
 
@@ -300,7 +345,89 @@ class _GhostRequestHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _handle_ws_cube(self) -> bool:
+        """Handle WebSocket upgrade for GET /ws/cube.
+
+        Returns True if the request was a WebSocket upgrade (handled or rejected),
+        False if the caller should continue with normal HTTP processing.
+
+        No authentication required — the cube dashboard is a read-only live feed.
+        Clients receive broadcast JSON events for every upstream proxied request.
+        """
+        if self.path != "/ws/cube" or self.command != "GET":
+            return False
+        if self.headers.get("Upgrade", "").lower() != "websocket":
+            return False
+
+        ws_key = self.headers.get("Sec-WebSocket-Key", "")
+        if not ws_key:
+            self._send_json(400, {"error": "missing Sec-WebSocket-Key"})
+            return True
+
+        # WebSocket handshake (RFC 6455 §4.2.2)
+        magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+        accept = base64.b64encode(
+            hashlib.sha1((ws_key + magic).encode(), usedforsecurity=False).digest()
+        ).decode()
+
+        self.send_response(101, "Switching Protocols")
+        self.send_header("Upgrade", "websocket")
+        self.send_header("Connection", "Upgrade")
+        self.send_header("Sec-WebSocket-Accept", accept)
+        self.end_headers()
+
+        conn_id = os.urandom(4).hex()
+        with _ws_lock:
+            _ws_clients[conn_id] = self.wfile
+
+        # Send a welcome frame so the client knows it's live
+        try:
+            _ws_send_text(self.wfile, json.dumps({
+                "type": "connected",
+                "gateway_version": _GATEWAY_VERSION,
+                "message": "Ghost Cube live feed active",
+            }, separators=(",", ":")))
+        except Exception:  # noqa: BLE001
+            pass
+
+        # Block reading frames from client (ping/close/text all handled here).
+        # We only need to keep the connection alive; data flows server→client.
+        try:
+            while True:
+                try:
+                    header = self.rfile.read(2)
+                    if not header or len(header) < 2:
+                        break
+                    opcode = header[0] & 0x0F
+                    masked = bool(header[1] & 0x80)
+                    length = header[1] & 0x7F
+                    if length == 126:
+                        length = struct.unpack(">H", self.rfile.read(2))[0]
+                    elif length == 127:
+                        length = struct.unpack(">Q", self.rfile.read(8))[0]
+                    mask_key = self.rfile.read(4) if masked else b""
+                    payload = self.rfile.read(length)
+                    if masked:
+                        payload = bytes(b ^ mask_key[i % 4] for i, b in enumerate(payload))
+                    if opcode == 0x8:   # close
+                        # Echo close frame and exit
+                        self.wfile.write(b"\x88\x00")
+                        self.wfile.flush()
+                        break
+                    # pings (0x9) and client text/binary frames are ignored
+                except Exception:  # noqa: BLE001
+                    break
+        finally:
+            with _ws_lock:
+                _ws_clients.pop(conn_id, None)
+
+        return True
+
     def _handle(self) -> None:
+        # Ghost Cube WebSocket — unauthenticated live feed
+        if self._handle_ws_cube():
+            return
+
         # VAPL discovery — unauthenticated, no token required
         if self.path == "/.well-known/vapl.json":
             self._serve_vapl_manifest()
@@ -395,6 +522,18 @@ class _GhostRequestHandler(http.server.BaseHTTPRequestHandler):
                     self._add_security_headers()
                     self.end_headers()
                     self.wfile.write(resp_body)
+
+                    # Broadcast live event to Ghost Cube WebSocket clients
+                    broadcast_cube_event({
+                        "type": "request",
+                        "path": self.path,
+                        "method": self.command,
+                        "upstream_status": resp.status,
+                        "response_bytes": len(resp_body),
+                        "receipt_id": json.loads(base64.b64decode(receipt_b64))["receipt_id"],
+                        "delivered_at": _now().isoformat(),
+                        "gateway_version": _GATEWAY_VERSION,
+                    })
 
                     # Cache for idempotency replay
                     if idempotency_key and 200 <= resp.status < 300:
