@@ -57,6 +57,7 @@ log = logging.getLogger("ghost.gateway")
 
 _GHOST_TOKEN_HEADER = "X-Ghost-Token"
 _GHOST_SESSION_HEADER = "X-Ghost-Session"
+_GHOST_INTERNAL_SECRET = os.environ.get("GHOST_INTERNAL_SECRET", "")
 _BLOCKED_REQUEST_HEADERS = {"authorization", "x-ghost-token", "x-ghost-session"}
 
 # Private / link-local / loopback / reserved networks that must never be
@@ -423,9 +424,36 @@ class _GhostRequestHandler(http.server.BaseHTTPRequestHandler):
 
         return True
 
+    def _handle_internal_broadcast(self) -> None:
+        """POST /internal/broadcast — receive a JSON event from mcp-x402-xrpl
+        (e.g. after a Xahau score anchor) and fan it out to all Ghost Cube
+        WebSocket clients. Protected by GHOST_INTERNAL_SECRET if set."""
+        if _GHOST_INTERNAL_SECRET:
+            provided = self.headers.get("X-Internal-Secret", "")
+            if provided != _GHOST_INTERNAL_SECRET:
+                self._send_json(403, {"error": "forbidden", "detail": "Invalid X-Internal-Secret"})
+                return
+
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            import json as _json
+            event = _json.loads(raw)
+        except Exception:
+            self._send_json(400, {"error": "invalid_json"})
+            return
+
+        broadcast_cube_event(event)
+        self._send_json(200, {"ok": True, "clients_notified": len(_ws_clients)})
+
     def _handle(self) -> None:
         # Ghost Cube WebSocket — unauthenticated live feed
         if self._handle_ws_cube():
+            return
+
+        # Internal broadcast — POST /internal/broadcast from mcp-x402-xrpl after Xahau anchor
+        if self.path == "/internal/broadcast" and self.command == "POST":
+            self._handle_internal_broadcast()
             return
 
         # VAPL discovery — unauthenticated, no token required
