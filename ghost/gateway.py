@@ -367,7 +367,7 @@ class _GhostRequestHandler(http.server.BaseHTTPRequestHandler):
         # WebSocket handshake (RFC 6455 §4.2.2)
         magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
         accept = base64.b64encode(
-            hashlib.sha1((ws_key + magic).encode()).digest()
+            hashlib.sha1((ws_key + magic).encode(), usedforsecurity=False).digest()
         ).decode()
 
         self.send_response(101, "Switching Protocols")
